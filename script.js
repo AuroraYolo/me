@@ -33,6 +33,138 @@ window.addEventListener("hashchange", updateActiveSection);
 requestAnimationFrame(updateActiveSection);
 
 const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const runHeroParticleIntro = () => {
+  const art = document.querySelector(".hero-art");
+  const img = art?.querySelector("img");
+  if (!art || !img) return;
+
+  const finish = (canvas) => {
+    art.classList.add("is-particle-done");
+    art.classList.remove("is-particle-loading");
+    if (canvas) window.setTimeout(() => canvas.remove(), 500);
+  };
+
+  if (prefersReducedMotion) {
+    finish();
+    return;
+  }
+
+  const start = () => {
+    const artRect = art.getBoundingClientRect();
+    const imgRect = img.getBoundingClientRect();
+    if (imgRect.width < 80 || imgRect.height < 80 || !img.naturalWidth) {
+      finish();
+      return;
+    }
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      finish();
+      return;
+    }
+
+    canvas.className = "hero-particles";
+    canvas.style.left = `${imgRect.left - artRect.left}px`;
+    canvas.style.top = `${imgRect.top - artRect.top}px`;
+    canvas.style.width = `${imgRect.width}px`;
+    canvas.style.height = `${imgRect.height}px`;
+    canvas.width = Math.round(imgRect.width * dpr);
+    canvas.height = Math.round(imgRect.height * dpr);
+    ctx.scale(dpr, dpr);
+    art.append(canvas);
+    art.classList.add("is-particle-loading");
+
+    const sampleW = Math.min(190, Math.round(imgRect.width / 5));
+    const sampleH = Math.max(1, Math.round(sampleW * imgRect.height / imgRect.width));
+    const sample = document.createElement("canvas");
+    const sampleCtx = sample.getContext("2d", { willReadFrequently: true });
+    if (!sampleCtx) {
+      finish(canvas);
+      return;
+    }
+
+    sample.width = sampleW;
+    sample.height = sampleH;
+
+    const scale = Math.max(sampleW / img.naturalWidth, sampleH / img.naturalHeight);
+    const sourceW = sampleW / scale;
+    const sourceH = sampleH / scale;
+    const sourceX = (img.naturalWidth - sourceW) / 2;
+    const sourceY = 0;
+    sampleCtx.drawImage(img, sourceX, sourceY, sourceW, sourceH, 0, 0, sampleW, sampleH);
+
+    const pixels = sampleCtx.getImageData(0, 0, sampleW, sampleH).data;
+    const points = [];
+    const step = Math.max(2, Math.round(sampleW / 58));
+    for (let y = 0; y < sampleH; y += step) {
+      for (let x = 0; x < sampleW; x += step) {
+        const i = (y * sampleW + x) * 4;
+        if (pixels[i + 3] < 24) continue;
+        points.push({
+          tx: x / sampleW * imgRect.width,
+          ty: y / sampleH * imgRect.height,
+          color: `rgb(${pixels[i]} ${pixels[i + 1]} ${pixels[i + 2]})`
+        });
+      }
+    }
+
+    points.sort(() => Math.random() - 0.5);
+    const limit = window.innerWidth < 700 ? 620 : 1350;
+    const particles = points.slice(0, limit).map((point) => {
+      const wave = point.tx / imgRect.width * 0.55 + point.ty / imgRect.height * 0.45;
+      return {
+        ...point,
+        x: point.tx + (Math.random() - 0.5) * 180,
+        y: point.ty + (Math.random() - 0.5) * 150,
+        r: 1 + Math.random() * 1.7,
+        delay: Math.min(0.76, 0.12 + wave * 0.56 + Math.random() * 0.1),
+        span: 0.35
+      };
+    });
+
+    const duration = 1900;
+    const started = performance.now();
+    const easeOut = (value) => 1 - Math.pow(1 - value, 4);
+
+    const tick = (now) => {
+      const progress = Math.min(1, (now - started) / duration);
+      ctx.clearRect(0, 0, imgRect.width, imgRect.height);
+
+      particles.forEach((particle) => {
+        const local = Math.max(0, Math.min(1, (progress - particle.delay) / particle.span));
+        const eased = easeOut(local);
+        const fade = progress < 0.88 ? 1 : Math.max(0, 1 - (progress - 0.88) / 0.12);
+        const x = particle.x + (particle.tx - particle.x) * eased;
+        const y = particle.y + (particle.ty - particle.y) * eased;
+
+        ctx.globalAlpha = easeOut(Math.min(1, local * 1.2)) * fade;
+        ctx.fillStyle = particle.color;
+        ctx.beginPath();
+        ctx.arc(x, y, particle.r * (0.45 + eased * 0.65), 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      if (progress > 0.78) art.classList.add("is-particle-done");
+      if (progress < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        canvas.classList.add("is-done");
+        finish(canvas);
+      }
+    };
+
+    requestAnimationFrame(tick);
+  };
+
+  if (img.complete) requestAnimationFrame(start);
+  else img.addEventListener("load", () => requestAnimationFrame(start), { once: true });
+};
+
+runHeroParticleIntro();
+
 const terminalRows = Array.from(document.querySelectorAll(".terminal-progress .progress"));
 const idleProgressTimers = [];
 let terminalRunId = 0;
