@@ -4,6 +4,7 @@
 output/
 AGENTS.md
 assets/source/
+assets/audio/*.mp3
 design/
 docs/
 prompts/

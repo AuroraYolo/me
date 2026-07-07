@@ -165,6 +165,77 @@ const runHeroParticleIntro = () => {
 
 runHeroParticleIntro();
 
+const initMusicPlayer = () => {
+  const player = document.querySelector("[data-music-player]");
+  const toggle = player?.querySelector("[data-music-toggle]");
+  const icon = toggle?.querySelector("span");
+  const status = player?.querySelector("[data-music-status]");
+  const progress = player?.querySelector("[data-music-progress]");
+  const src = player?.dataset.audioSrc;
+  if (!player || !toggle || !icon || !status || !progress || !src) return;
+
+  const audio = new Audio(src);
+  audio.loop = true;
+  audio.preload = "none";
+  let audioReady;
+
+  const hasAudioFile = async () => {
+    if (typeof audioReady === "boolean") return audioReady;
+    try {
+      const response = await fetch(src, { method: "HEAD", cache: "no-store" });
+      audioReady = response.ok;
+    } catch {
+      audioReady = false;
+    }
+    return audioReady;
+  };
+
+  const setPlaying = (playing) => {
+    player.classList.toggle("is-playing", playing);
+    toggle.setAttribute("aria-label", playing ? "暂停背景音乐" : "播放背景音乐");
+    status.textContent = playing ? "梁博 · 正在播放" : "梁博 · 点击播放";
+  };
+
+  const playMusic = async (isAuto = false) => {
+    try {
+      if (!await hasAudioFile()) {
+        player.classList.add("is-missing");
+        status.textContent = "请添加音频文件";
+        return;
+      }
+      await audio.play();
+      player.classList.remove("is-missing");
+      setPlaying(true);
+    } catch {
+      player.classList.add("is-missing");
+      status.textContent = isAuto ? "浏览器拦截 · 点击播放" : "点击播放";
+    }
+  };
+
+  toggle.addEventListener("click", async () => {
+    if (!audio.paused) {
+      audio.pause();
+      setPlaying(false);
+      return;
+    }
+    await playMusic();
+  });
+
+  window.setTimeout(() => playMusic(true), 600);
+
+  audio.addEventListener("timeupdate", () => {
+    if (audio.duration) progress.style.width = `${audio.currentTime / audio.duration * 100}%`;
+  });
+  audio.addEventListener("ended", () => setPlaying(false));
+  audio.addEventListener("error", () => {
+    setPlaying(false);
+    player.classList.add("is-missing");
+    status.textContent = "请添加音频文件";
+  });
+};
+
+initMusicPlayer();
+
 const terminalRows = Array.from(document.querySelectorAll(".terminal-progress .progress"));
 const idleProgressTimers = [];
 let terminalRunId = 0;
