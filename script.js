@@ -196,7 +196,7 @@ const initMusicPlayer = () => {
     status.textContent = playing ? "梁博 · 正在播放" : "梁博 · 点击播放";
   };
 
-  const playMusic = async (isAuto = false) => {
+  const playMusic = async () => {
     try {
       if (!await hasAudioFile()) {
         player.classList.add("is-missing");
@@ -208,7 +208,7 @@ const initMusicPlayer = () => {
       setPlaying(true);
     } catch {
       player.classList.add("is-missing");
-      status.textContent = isAuto ? "浏览器拦截 · 点击播放" : "点击播放";
+      status.textContent = "点击播放";
     }
   };
 
@@ -220,8 +220,6 @@ const initMusicPlayer = () => {
     }
     await playMusic();
   });
-
-  window.setTimeout(() => playMusic(true), 600);
 
   audio.addEventListener("timeupdate", () => {
     if (audio.duration) progress.style.width = `${audio.currentTime / audio.duration * 100}%`;
