@@ -181,6 +181,10 @@ const initMusicPlayer = () => {
 
   const hasAudioFile = async () => {
     if (typeof audioReady === "boolean") return audioReady;
+    if (/^https?:\/\//.test(src)) {
+      audioReady = true;
+      return audioReady;
+    }
     try {
       const response = await fetch(src, { method: "HEAD", cache: "no-store" });
       audioReady = response.ok;
