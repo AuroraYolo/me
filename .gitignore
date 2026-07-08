@@ -5,6 +5,7 @@ output/
 AGENTS.md
 assets/source/
 assets/audio/*.mp3
+!assets/audio/chuxian-you-likai.mp3
 design/
 docs/
 prompts/
