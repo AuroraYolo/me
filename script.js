@@ -6,17 +6,6 @@ const setActive = (id) => {
   });
 };
 
-const observer = new IntersectionObserver(
-  (entries) => {
-    entries.forEach((entry) => {
-      if (entry.isIntersecting) entry.target.classList.add("is-visible");
-    });
-  },
-  { threshold: 0.16 }
-);
-
-document.querySelectorAll("[data-reveal]").forEach((el) => observer.observe(el));
-
 const sections = Array.from(document.querySelectorAll(".one-page > section[id]"));
 
 const updateActiveSection = () => {
@@ -24,7 +13,10 @@ const updateActiveSection = () => {
   const current = sections.reduce((active, section) => {
     return section.getBoundingClientRect().top <= marker ? section : active;
   }, sections[0]);
-  if (current?.id) setActive(current.id);
+  if (current?.id) {
+    setActive(current.id);
+    document.body.dataset.section = current.id;
+  }
 };
 
 window.addEventListener("scroll", updateActiveSection, { passive: true });
@@ -168,55 +160,48 @@ runHeroParticleIntro();
 const initMusicPlayer = () => {
   const player = document.querySelector("[data-music-player]");
   const toggle = player?.querySelector("[data-music-toggle]");
-  const icon = toggle?.querySelector("span");
   const status = player?.querySelector("[data-music-status]");
   const progress = player?.querySelector("[data-music-progress]");
+  const track = player?.querySelector("[data-music-track]");
+  const currentTime = player?.querySelector("[data-music-current]");
+  const duration = player?.querySelector("[data-music-duration]");
+  const minimize = player?.querySelector("[data-music-minimize]");
   const src = player?.dataset.audioSrc;
-  if (!player || !toggle || !icon || !status || !progress || !src) return;
+  if (!player || !toggle || !status || !progress || !track || !currentTime || !duration || !minimize || !src) return;
 
   const audio = new Audio(src);
   audio.loop = true;
-  audio.preload = "none";
-  let audioReady;
+  audio.preload = "metadata";
 
-  const hasAudioFile = async () => {
-    if (typeof audioReady === "boolean") return audioReady;
-    if (/^https?:\/\//.test(src)) {
-      audioReady = true;
-      return audioReady;
-    }
-    try {
-      const response = await fetch(src, { method: "HEAD", cache: "no-store" });
-      audioReady = response.ok;
-    } catch {
-      audioReady = false;
-    }
-    return audioReady;
+  const formatTime = (value) => {
+    if (!Number.isFinite(value)) return "--:--";
+    const minutes = Math.floor(value / 60);
+    const seconds = Math.floor(value % 60);
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   };
 
   const setPlaying = (playing) => {
     player.classList.toggle("is-playing", playing);
     toggle.setAttribute("aria-label", playing ? "暂停背景音乐" : "播放背景音乐");
+    toggle.setAttribute("aria-pressed", String(playing));
     status.textContent = playing ? "梁博 · 正在播放" : "梁博 · 点击播放";
   };
 
   const playMusic = async () => {
     try {
-      if (!await hasAudioFile()) {
-        player.classList.add("is-missing");
-        status.textContent = "请添加音频文件";
-        return;
-      }
       await audio.play();
       player.classList.remove("is-missing");
       setPlaying(true);
     } catch {
-      player.classList.add("is-missing");
-      status.textContent = "点击播放";
+      setPlaying(false);
+      status.textContent = "请再点一次播放";
     }
   };
 
   toggle.addEventListener("click", async () => {
+    const wasCollapsed = player.classList.contains("is-collapsed");
+    if (wasCollapsed) player.classList.remove("is-collapsed");
+    if (wasCollapsed && !audio.paused) return;
     if (!audio.paused) {
       audio.pause();
       setPlaying(false);
@@ -225,28 +210,37 @@ const initMusicPlayer = () => {
     await playMusic();
   });
 
+  minimize.addEventListener("click", () => player.classList.add("is-collapsed"));
+
   audio.addEventListener("timeupdate", () => {
-    if (audio.duration) progress.style.width = `${audio.currentTime / audio.duration * 100}%`;
+    if (!audio.duration) return;
+    const value = audio.currentTime / audio.duration * 100;
+    progress.style.transform = `scaleX(${value / 100})`;
+    track.setAttribute("aria-valuenow", String(Math.round(value)));
+    currentTime.textContent = formatTime(audio.currentTime);
   });
+  audio.addEventListener("loadedmetadata", () => { duration.textContent = formatTime(audio.duration); });
   audio.addEventListener("ended", () => setPlaying(false));
   audio.addEventListener("error", () => {
     setPlaying(false);
     player.classList.add("is-missing");
     status.textContent = "请添加音频文件";
   });
+
+  toggle.setAttribute("aria-pressed", "false");
+  if (window.matchMedia("(max-width: 640px)").matches) player.classList.add("is-collapsed");
 };
 
 initMusicPlayer();
 
 const terminalRows = Array.from(document.querySelectorAll(".terminal-progress .progress"));
-const idleProgressTimers = [];
 let terminalRunId = 0;
 
 const setProgress = (row, value) => {
   const bar = row.querySelector("[data-progress]");
   const label = row.querySelector("b");
   if (!bar || !label) return;
-  bar.style.width = `${value}%`;
+  bar.style.transform = `scaleX(${value / 100})`;
   bar.setAttribute("aria-valuenow", String(value));
   label.textContent = `${value}%`;
 };
@@ -267,43 +261,8 @@ const animateProgress = (row, target, duration = 900) => {
   requestAnimationFrame(tick);
 };
 
-const clearIdleProgress = () => {
-  while (idleProgressTimers.length) window.clearInterval(idleProgressTimers.pop());
-};
-
-const startIdleProgress = () => {
-  if (prefersReducedMotion) return;
-  clearIdleProgress();
-  terminalRows.forEach((row, index) => {
-    const bar = row.querySelector("[data-progress]");
-    const initial = Number(bar?.dataset.progress || 100);
-    const min = Number(row.dataset.min || Math.max(30, initial - 10));
-    const max = Number(row.dataset.max || Math.min(100, initial + 10));
-    const speed = Number(row.dataset.speed || 2200);
-
-    const update = () => {
-      const phase = Date.now() / speed + index * 1.7;
-      const wave = (Math.sin(phase) + 1) / 2;
-      const value = Math.round(min + (max - min) * wave);
-      row.dataset.value = String(value);
-      setProgress(row, value);
-    };
-
-    update();
-    idleProgressTimers.push(window.setInterval(update, speed / 2));
-  });
-};
-
 terminalRows.forEach((row) => {
   const bar = row.querySelector("[data-progress]");
-  const initial = Number(bar?.dataset.progress || 100);
-  const min = Number(row.dataset.min || Math.max(30, initial - 10));
-  const max = Number(row.dataset.max || Math.min(100, initial + 10));
-
-  bar?.setAttribute("role", "progressbar");
-  bar?.setAttribute("aria-valuemin", String(min));
-  bar?.setAttribute("aria-valuemax", String(max));
-  row.dataset.target = String(initial);
   row.dataset.value = "0";
   setProgress(row, 0);
 });
@@ -314,10 +273,10 @@ const terminalLines = [
   { text: "$ whoami", statusLabel: "v1.0.0 · identifying...", progress: 8 },
   { text: "> Peter", statusLabel: "v1.0.0 · profile loaded", progress: 18 },
   { text: "$ peter status --live", statusLabel: "v1.0.0 · checking workspace", progress: 28 },
-  { text: "10:12:01   loading AI learning notes", status: "[OK]", statusClass: "ok", statusLabel: "v1.0.0 · loading...", progress: 42 },
-  { text: "10:12:02   syncing travel archive", status: "[OK]", statusClass: "ok", statusLabel: "v1.0.0 · syncing...", progress: 56 },
-  { text: "10:12:04   compiling daily loop", status: "[RUN]", statusClass: "run", statusLabel: "v1.0.0 · compiling...", progress: 68 },
-  { text: "10:12:05   keeping respect", status: "[LOCKED]", statusClass: "lock", statusLabel: "v1.0.0 · linking...", progress: 75 }
+  { text: "10:12:01   loading AI learning log", status: "[OK]", statusClass: "ok", statusLabel: "v1.0.0 · loading...", progress: 42 },
+  { text: "10:12:02   mounting travel archive", status: "[OK]", statusClass: "ok", statusLabel: "v1.0.0 · mounting...", progress: 58 },
+  { text: "10:12:04   linking source repository", status: "[RUN]", statusClass: "run", statusLabel: "v1.0.0 · linking...", progress: 76 },
+  { text: "10:12:05   portfolio session ready", status: "[READY]", statusClass: "lock", statusLabel: "v1.0.0 · ready", progress: 100 }
 ];
 
 const setTerminalStatus = (text = "v1.0.0 · waiting...") => {
@@ -380,7 +339,6 @@ const appendTerminalLine = (entry, runId = terminalRunId) => {
 const runTerminal = async () => {
   if (!terminalOutput) return;
   const runId = ++terminalRunId;
-  clearIdleProgress();
   resetTerminalProgress();
   setTerminalStatus();
   terminalOutput.classList.remove("is-complete");
@@ -402,7 +360,6 @@ const runTerminal = async () => {
   }
 
   terminalOutput.classList.add("is-complete");
-  window.setTimeout(startIdleProgress, 900);
 };
 
 window.restartTerminalDemo = runTerminal;
@@ -417,6 +374,17 @@ if (prefersReducedMotion) {
     if (entry.statusLabel) setTerminalStatus(entry.statusLabel);
     if (typeof entry.progress === "number") setProgress(terminalRows[0], entry.progress);
   });
+  terminalOutput?.classList.add("is-complete");
 } else {
-  window.setTimeout(runTerminal, 350);
+  const terminal = terminalOutput?.closest(".terminal");
+  if (terminal) {
+    const terminalObserver = new IntersectionObserver((entries, observer) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      runTerminal();
+    }, { threshold: 0.35 });
+    terminalObserver.observe(terminal);
+  }
 }
+
+document.querySelector("[data-terminal-replay]")?.addEventListener("click", runTerminal);
